@@ -17,7 +17,10 @@ use std::{
 
 use anyhow::{format_err, Context, Error};
 use chrono::{Datelike, Local, Utc};
-use reqwest::blocking::Client;
+use reqwest::{
+    blocking::{Client, Response},
+    IntoUrl,
+};
 use serde::{de, Deserialize, Deserializer, Serialize};
 use serde_json::json;
 use url::Url;
@@ -223,6 +226,18 @@ fn print_sync_notification(server_name: &String, results: &[EntryResult]) {
         });
 }
 
+fn fetch(
+    client: &Client,
+    url: impl IntoUrl,
+    credentials: &Option<(String, Option<String>)>,
+) -> reqwest::Result<Response> {
+    let mut builder = client.get(url);
+    if let Some((username, password)) = credentials {
+        builder = builder.basic_auth(username, password.as_ref())
+    }
+    builder.send()
+}
+
 fn load_and_process_opds() -> Result<(), Error> {
     let mut args = env::args().skip(1);
     let library_path = PathBuf::from(
@@ -279,13 +294,9 @@ fn load_and_process_opds() -> Result<(), Error> {
         }
 
         let instance_path = save_path.join(name);
-        let username = &instance.username.clone().unwrap_or("admin".to_string());
-        let password = instance.password.as_ref();
+        let credentials = (|| Some((instance.username.clone()?, instance.password.clone())))();
 
-        let response = client
-            .get(&instance.url)
-            .basic_auth(username, password)
-            .send()?;
+        let response = fetch(&client, &instance.url, &credentials)?;
 
         let xml = response.text()?;
         let mut feed = quick_xml::de::from_str::<Feed>(&xml)?;
@@ -310,7 +321,7 @@ fn load_and_process_opds() -> Result<(), Error> {
                 false => Url::parse(&url_string).expect("Can't parse paginated url"),
             };
 
-            let response = client.get(url).basic_auth(username, password).send()?;
+            let response = fetch(&client, url, &credentials)?;
 
             let xml = response.text()?;
             let next_feed = quick_xml::de::from_str::<Feed>(&xml)?;
@@ -420,10 +431,7 @@ fn load_and_process_opds() -> Result<(), Error> {
                 result.entry.title
             ))?);
 
-            let response = client
-                .get(url)
-                .basic_auth(username, password)
-                .send()
+            let response = fetch(&client, &instance.url, &credentials)
                 .and_then(|mut response| response.copy_to(&mut file));
 
             if let Err(err) = response {
