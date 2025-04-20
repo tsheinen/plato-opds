@@ -43,6 +43,8 @@ pub struct Entry {
     pub publishers: Option<Vec<Publisher>>,
     /// The date the book was published.
     pub published: Option<DateTime<Utc>>,
+    /// The date the book was last updated.
+    pub updated: Option<DateTime<Utc>>,
     /// The links to the book's resources. Usually contains a link to the book files.
     #[serde(rename = "link")]
     pub links: Option<Vec<Link>>,

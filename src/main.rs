@@ -16,7 +16,7 @@ use std::{
 };
 
 use anyhow::{format_err, Context, Error};
-use chrono::{Datelike, Local, Utc};
+use chrono::{DateTime, Datelike, Local, Utc};
 use reqwest::{
     blocking::{Client, Response},
     IntoUrl,
@@ -398,8 +398,18 @@ fn load_and_process_opds() -> Result<(), Error> {
 
                 doc_path = doc_path.join(file_name);
 
-                if doc_path.exists() {
-                    return None;
+                // default to Unix Epoch; if there is no updated field in the entry then should never update
+                let entry_last_updated = entry.updated.unwrap_or(DateTime::UNIX_EPOCH);
+                let last_modified = fs::metadata(&doc_path).map(|metadata| {
+                    metadata
+                        .modified()
+                        .map(DateTime::<Utc>::from)
+                        .unwrap_or(DateTime::UNIX_EPOCH)
+                });
+                match last_modified {
+                    Ok(last_modified) if entry_last_updated > last_modified => {}
+                    Ok(_) => return None, // file on disk updated more recently so we'll skip
+                    Err(_) => {}          // an error likely implies the file does not exist
                 }
 
                 Some(EntryResult {
@@ -420,10 +430,6 @@ fn load_and_process_opds() -> Result<(), Error> {
             }
 
             let doc_path = result.save_path;
-            if doc_path.exists() {
-                continue;
-            }
-
             let mut file = File::create(&doc_path)?;
             let mut url = Url::parse(&instance.url)?;
             url.set_path(&result.link.href.ok_or(format_err!(
