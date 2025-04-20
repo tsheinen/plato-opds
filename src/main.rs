@@ -27,7 +27,7 @@ use url::Url;
 
 use crate::opds::{Entry, Feed, Instance, Link};
 
-const SETTINGS_PATH: &str = "Settings.toml";
+const DEFAULT_SETTINGS_PATH: &str = "Settings.toml";
 
 /// Holds the settings for the application converted from a TOML file.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -256,8 +256,10 @@ fn load_and_process_opds() -> Result<(), Error> {
         .next()
         .ok_or_else(|| format_err!("missing argument: online status"))
         .and_then(|v| v.parse::<bool>().map_err(Into::into))?;
-    let settings: Settings = load_toml::<Settings, _>(SETTINGS_PATH)
-        .with_context(|| format!("can't load settings from {}", SETTINGS_PATH))?;
+
+    let settings_path = std::env::var("SETTINGS_TOML").unwrap_or(DEFAULT_SETTINGS_PATH.into());
+    let settings: Settings = load_toml::<Settings, _>(&settings_path)
+        .with_context(|| format!("can't load settings from {}", &settings_path))?;
 
     if !online {
         if !wifi {
